@@ -9,6 +9,7 @@ const UploadPage = () => {
   const [files, setFiles] = useState([]);
 
   console.log(files);
+console.log(results)
 
   return (
     <div className="flex bg-gray-100 dark:bg-gray-800">
@@ -43,36 +44,10 @@ const UploadPage = () => {
           <ul>
             {results.map((result, index) => (
               <li key={index}>
-                <h3>{result.name}</h3>
-                <h3>
-                  Word Count: {results[0]?.data.result.word_count_whitespace}
-                </h3>
-                <h3>
-                  Sentence Count: {results[0]?.data.result.sentence_count}
-                </h3>
-                <h3>
-                  Average Sentence:
-                  {results[0]?.data.result.avg_sentence_length}
-                </h3>
-                <h3>
-                  Flesch Reading Ease:
-                  {results[0]?.data.result.readability.flesch_reading_ease}
-                </h3>
-                <h3>
-                  Flesch Kincaid Grade:
-                  {results[0]?.data.result.readability.flesch_kincaid_grade}
-                </h3>
-                <h3>
-                  Smog Index: {results[0]?.data.result.readability.smog_index}
-                </h3>
-                <h3>
-                  Automated Readability Index:
-                  {
-                    results[0]?.data.result.readability
-                      .automated_readability_index
-                  }
-                </h3>
-                <h3>{result.name}</h3>
+                <h3>{result.data.result.classification}</h3>
+                <h3>{result.data.result.metrics.total_words}</h3>
+                <h3>{result.data.result.metrics.avg_sentences_length}</h3>
+                <h3>{result.data.result.metrics.difficult_word_ratio}</h3>
               </li>
             ))}
           </ul>

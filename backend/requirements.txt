@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+spacy
+python-docx
+pdfplumber
+nltk
+chardet
+pandas
+scikit-learn
+joblib

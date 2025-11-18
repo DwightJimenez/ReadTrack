@@ -1,46 +1,134 @@
-import re
-import textstat
 import spacy
+import nltk
+from nltk.corpus import cmudict
 
-nlp = spacy.load("en_core_web_sm")
+# --- One-time setup: Run these commands in your terminal ---
+# python -m spacy download en_core_web_sm
+# python -m nltk.downloader cmudict
+# --------------------------------------------------------
 
-def analyze_text(text):
+# Load the spaCy model
+# This handles the core NLP pipeline (tokenization, sentence splitting)
+try:
+    nlp = spacy.load("en_core_web_sm")
+except IOError:
+    print("spaCy model 'en_core_web_sm' not found.")
+    print("Please run: python -m spacy download en_core_web_sm")
+    # In a real app, you'd handle this more gracefully
+
+# Load the CMU Pronouncing Dictionary for syllable counting
+try:
+    d = cmudict.dict()
+except LookupError:
+    print("NLTK 'cmudict' not found.")
+    print("Please run: python -m nltk.downloader cmudict")
+
+def _count_syllables(word):
+    """ 
+    A simple heuristic to count syllables using NLTK's CMUDict.
+    Falls back to a regex-based heuristic if word is not found.
+    """
+    try:
+        # Use the first pronunciation variant
+        return [len(list(y for y in x if y[-1].isdigit())) for x in d[word.lower()]][0]
+    except (KeyError, TypeError, IndexError):
+        # Fallback heuristic for unknown words
+        import re
+        word = word.lower()
+        if len(word) <= 3: return 1
+        word = re.sub(r'(es|ed|e)$', '', word)
+        vowels = re.findall(r'[aeiouy]+', word)
+        return len(vowels) if len(vowels) > 0 else 1
+
+def _extract_features(text: str):
+    """
+    Extracts the core linguistic features required by the classifier.
+    This is the "Simulated Reading Metrics" part of your thesis.
+    """
+    # Process the text with spaCy
     doc = nlp(text)
+    
+    total_words = 0
+    total_sentences = 0
+    total_syllables = 0
+    difficult_words = 0
+    
+    sentences = list(doc.sents)
+    total_sentences = len(sentences)
+    
+    # Iterate through words
+    for token in doc:
+        if token.is_alpha:  # Is a word (not punctuation)
+            total_words += 1
+            syllables = _count_syllables(token.text)
+            total_syllables += syllables
+            
+            # "Difficult word" heuristic: 3 or more syllables
+            if syllables >= 3:
+                difficult_words += 1
+                
+    # --- Calculate Features ---
+    # Handle division by zero if text is empty
+    if total_words == 0 or total_sentences == 0:
+        return {
+            "avg_sentence_length": 0,
+            "avg_word_length_syllables": 0,
+            "difficult_word_ratio": 0,
+            "total_words": 0
+        }
 
-    # Word count method A: simple whitespace-based
-    ws_tokens = [tok for tok in re.findall(r'\S+', text)]
-    word_count_ws = len(ws_tokens)
-
-    # Word count method B: spaCy alphabetic tokens (current behaviour you had)
-    spacy_tokens = [token.text for token in doc if token.is_alpha]
-    word_count_spacy = len(spacy_tokens)
-
-    # Word count method C: include words with apostrophes and numbers
-    # (common regex that counts words like "can't" and "3rd")
-    regex_word_tokens = re.findall(r"[A-Za-z0-9]+(?:['-][A-Za-z0-9]+)?", text)
-    word_count_regex = len(regex_word_tokens)
-
-    sentences = len(list(doc.sents))
-    avg_sentence_length = word_count_ws / sentences if sentences else 0
-
-    readability_scores = {
-        "flesch_reading_ease": textstat.flesch_reading_ease(text),
-        "flesch_kincaid_grade": textstat.flesch_kincaid_grade(text),
-        "smog_index": textstat.smog_index(text),
-        "automated_readability_index": textstat.automated_readability_index(text),
-    }
-
-    # include token diffs to help debug why counts differ
-    set_ws = set(ws_tokens)
-    set_spacy = set(spacy_tokens)
-    difference_sample = list((set_ws - set_spacy))[:30]  # tokens found by ws but not spaCy
-
+    avg_sentence_length = total_words / total_sentences
+    avg_word_length_syllables = total_syllables / total_words
+    difficult_word_ratio = difficult_words / total_words
+    
     return {
-        "word_count_whitespace": word_count_ws,
-        "word_count_spacy_alpha": word_count_spacy,
-        "word_count_regex": word_count_regex,
-        "sentence_count": sentences,
         "avg_sentence_length": avg_sentence_length,
-        "readability": readability_scores,
-        "debug_sample_tokens_missing_in_spacy": difference_sample,
+        "avg_word_length_syllables": avg_word_length_syllables,
+        "difficult_word_ratio": difficult_word_ratio,
+        "total_words": total_words
     }
+
+def _prototype_classifier(features: dict) -> str:
+    """
+    This is the PROTOTYPE model.
+    A rule-based (heuristic) classifier that uses the extracted features.
+    
+    This will be REPLACED by your trained ML model (e.g., model.predict())
+    which you will evaluate with the F1-score.
+    """
+    
+    # Heuristic rules based on common readability formulas
+    # These are placeholders for your thesis.
+    
+    if features["avg_sentence_length"] > 20 or features["difficult_word_ratio"] > 0.20:
+        classification = "Difficult"
+    elif features["avg_sentence_length"] > 15 or features["difficult_word_ratio"] > 0.10:
+        classification = "Moderate"
+    else:
+        classification = "Easy"
+        
+    return classification
+
+def analyze_text(text: str) -> dict:
+    """
+    Main analysis function called by the FastAPI endpoint.
+    It orchestrates the feature extraction and classification.
+    """
+    
+    # 1. Extract linguistic features
+    features = _extract_features(text)
+    
+    # 2. Classify based on features (using the prototype model)
+    classification = _prototype_classifier(features)
+    
+    # 3. Format the result to send back to the user
+    result = {
+        "classification": classification,
+        "metrics": {
+            "total_words": features["total_words"],
+            "avg_sentence_length": round(features["avg_sentence_length"], 2),
+            "difficult_word_ratio": round(features["difficult_word_ratio"], 2)
+        }
+    }
+    
+    return result
