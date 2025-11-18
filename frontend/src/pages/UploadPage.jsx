@@ -3,13 +3,24 @@ import Sidebar from "../components/Sidebar";
 import Input from "../components/Input";
 import File from "../components/File";
 import { useState } from "react";
+import HighlightedText from "../components/HighlightedText";
 
 const UploadPage = () => {
   const [results, setResults] = useState([]);
   const [files, setFiles] = useState([]);
 
   console.log(files);
-console.log(results)
+  console.log(results);
+  // 1. The text you want to analyze
+  const sampleText =
+    "Photosynthesis is a process used by plants. This is an exceptionally long sentence that is meant to trigger the long sentence detector because it goes on for quite a while without stopping. It is cool. The mitochondria is the powerhouse of the cell.";
+
+  // 2. The logic for what to highlight
+  // Note: 'Photosynthesis' is in sentence 0. 'The mitochondria...' is sentence 3.
+  const sampleHighlights = {
+    difficult_words: ["photosynthesis", "mitochondria"],
+    long_sentence_indices: [1], // Highlighting the second sentence
+  };
 
   return (
     <div className="flex bg-gray-100 dark:bg-gray-800">
@@ -44,13 +55,24 @@ console.log(results)
           <ul>
             {results.map((result, index) => (
               <li key={index}>
-                <h3>{result.data.result.classification}</h3>
-                <h3>{result.data.result.metrics.total_words}</h3>
-                <h3>{result.data.result.metrics.avg_sentences_length}</h3>
-                <h3>{result.data.result.metrics.difficult_word_ratio}</h3>
+                <h3>Classification: {result.data.result.classification}</h3>
+                <h3>Total Words: {result.data.result.metrics.total_words}</h3>
+                <h3>
+                  Average Sentence Length:{" "}
+                  {result.data.result.metrics.avg_sentence_length}
+                </h3>
+                <h3>
+                  Difficult Word Ratio:{" "}
+                  {result.data.result.metrics.difficult_word_ratio * 100}%
+                </h3>
               </li>
             ))}
           </ul>
+          <HighlightedText
+            text={sampleText}
+            highlights={sampleHighlights}
+            file={null} // Set file to null to ensure text mode is active
+          />
         </div>
 
         <div className="relative">
