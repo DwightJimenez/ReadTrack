@@ -25,6 +25,6 @@ async def analyze_material(file: UploadFile = File(None), text: str = Form(None)
             return {"error": "No text or file provided"}
 
         result = analyze_text(text_content)
-        return {"status": "success", "result": result}
+        return {"status": "success","text": text_content, "result": result}
     except Exception as e:
         return {"error": str(e)}

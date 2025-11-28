@@ -1,39 +1,49 @@
 import spacy
 import nltk
+import pandas as pd
+import joblib
+import os
+import re
 from nltk.corpus import cmudict
 
-# --- One-time setup: Run these commands in your terminal ---
-# python -m spacy download en_core_web_sm
-# python -m nltk.downloader cmudict
-# --------------------------------------------------------
-
-# Load the spaCy model
-# This handles the core NLP pipeline (tokenization, sentence splitting)
+# --- Setup: Load NLP Resources ---
 try:
     nlp = spacy.load("en_core_web_sm")
 except IOError:
-    print("spaCy model 'en_core_web_sm' not found.")
-    print("Please run: python -m spacy download en_core_web_sm")
-    # In a real app, you'd handle this more gracefully
+    print("spaCy model not found. Run: python -m spacy download en_core_web_sm")
 
-# Load the CMU Pronouncing Dictionary for syllable counting
 try:
     d = cmudict.dict()
 except LookupError:
-    print("NLTK 'cmudict' not found.")
-    print("Please run: python -m nltk.downloader cmudict")
+    nltk.download('cmudict')
+    d = cmudict.dict()
+
+# --- Load the Trained Thesis Model ---
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MODEL_PATH = os.path.join(BASE_DIR, 'readtrack_model.pkl')
+ENCODER_PATH = os.path.join(BASE_DIR, 'readtrack_label_encoder.pkl')
+COLUMNS_PATH = os.path.join(BASE_DIR, 'readtrack_model_columns.pkl')
+
+model = None
+label_encoder = None
+feature_columns = None
+
+try:
+    model = joblib.load(MODEL_PATH)
+    label_encoder = joblib.load(ENCODER_PATH)
+    feature_columns = joblib.load(COLUMNS_PATH)
+    print("ReadTrack AI Model Loaded Successfully.")
+except FileNotFoundError:
+    print("WARNING: Model files not found. System will run in PROTOTYPE mode until you run 'python train_model.py'.")
 
 def _count_syllables(word):
-    """ 
-    A simple heuristic to count syllables using NLTK's CMUDict.
-    Falls back to a regex-based heuristic if word is not found.
+    """
+    Estimates syllables for 'Simulated Fixation'.
+    Uses CMU Dictionary, falls back to regex for unknown words.
     """
     try:
-        # Use the first pronunciation variant
         return [len(list(y for y in x if y[-1].isdigit())) for x in d[word.lower()]][0]
     except (KeyError, TypeError, IndexError):
-        # Fallback heuristic for unknown words
-        import re
         word = word.lower()
         if len(word) <= 3: return 1
         word = re.sub(r'(es|ed|e)$', '', word)
@@ -42,92 +52,117 @@ def _count_syllables(word):
 
 def _extract_features(text: str):
     """
-    Extracts the core linguistic features required by the classifier.
-    This is the "Simulated Reading Metrics" part of your thesis.
+    Core Logic for Thesis: Extracts linguistic features.
+    Returns: (features_dict, list_of_difficult_words)
     """
-    # Process the text with spaCy
     doc = nlp(text)
     
     total_words = 0
-    total_sentences = 0
+    total_sentences = len(list(doc.sents))
     total_syllables = 0
-    difficult_words = 0
+    difficult_words_count = 0
     
-    sentences = list(doc.sents)
-    total_sentences = len(sentences)
-    
-    # Iterate through words
+    difficult_words_list = []
+
+    # 1. Analyze Words (For Fixation & Difficulty)
     for token in doc:
-        if token.is_alpha:  # Is a word (not punctuation)
+        if token.is_alpha:
             total_words += 1
             syllables = _count_syllables(token.text)
             total_syllables += syllables
             
-            # "Difficult word" heuristic: 3 or more syllables
+            # Thesis Logic: Words with 3+ syllables or rare roots simulate high fixation
             if syllables >= 3:
-                difficult_words += 1
-                
-    # --- Calculate Features ---
-    # Handle division by zero if text is empty
-    if total_words == 0 or total_sentences == 0:
-        return {
-            "avg_sentence_length": 0,
-            "avg_word_length_syllables": 0,
-            "difficult_word_ratio": 0,
-            "total_words": 0
-        }
+                difficult_words_count += 1
+                difficult_words_list.append(token.text)
 
+    # Safety for empty inputs
+    if total_words == 0 or total_sentences == 0:
+        return None, []
+
+    # 2. Calculate Thesis Metrics
     avg_sentence_length = total_words / total_sentences
     avg_word_length_syllables = total_syllables / total_words
-    difficult_word_ratio = difficult_words / total_words
+    difficult_word_ratio = difficult_words_count / total_words
     
-    return {
+    features = {
         "avg_sentence_length": avg_sentence_length,
         "avg_word_length_syllables": avg_word_length_syllables,
         "difficult_word_ratio": difficult_word_ratio,
         "total_words": total_words
     }
-
-def _prototype_classifier(features: dict) -> str:
-    """
-    This is the PROTOTYPE model.
-    A rule-based (heuristic) classifier that uses the extracted features.
     
-    This will be REPLACED by your trained ML model (e.g., model.predict())
-    which you will evaluate with the F1-score.
-    """
-    
-    # Heuristic rules based on common readability formulas
-    # These are placeholders for your thesis.
-    
-    if features["avg_sentence_length"] > 20 or features["difficult_word_ratio"] > 0.20:
-        classification = "Difficult"
-    elif features["avg_sentence_length"] > 15 or features["difficult_word_ratio"] > 0.10:
-        classification = "Moderate"
-    else:
-        classification = "Easy"
-        
-    return classification
+    return features, difficult_words_list
 
 def analyze_text(text: str) -> dict:
     """
-    Main analysis function called by the FastAPI endpoint.
-    It orchestrates the feature extraction and classification.
+    API Endpoint Logic.
+    Generates the 'Expected Output' for the frontend/Add-in.
     """
+    features, diff_words = _extract_features(text)
     
-    # 1. Extract linguistic features
-    features = _extract_features(text)
+    if not features:
+        return {"error": "No usable text found to analyze."}
+
+    # --- A. CLASSIFICATION (The AI Decision) ---
+    classification = "Unknown"
+    confidence = 0.0
     
-    # 2. Classify based on features (using the prototype model)
-    classification = _prototype_classifier(features)
+    if model and feature_columns:
+        # Create DataFrame for prediction, ensuring correct column order
+        input_data = pd.DataFrame([features])
+        # Only keep columns the model was trained on
+        input_data = input_data[[c for c in feature_columns if c in input_data.columns]]
+        
+        if not input_data.empty:
+            prediction_idx = model.predict(input_data)[0]
+            classification = label_encoder.inverse_transform([prediction_idx])[0]
+            
+            # Get confidence (probability)
+            prediction_proba = model.predict_proba(input_data)[0]
+            confidence = round(max(prediction_proba) * 100, 1)
+    else:
+        # Fallback Rule-Based Prototype (if model isn't trained yet)
+        if features["difficult_word_ratio"] > 0.2 or features["avg_sentence_length"] > 20:
+            classification = "Difficult"
+            confidence = 75.0
+        elif features["difficult_word_ratio"] > 0.1:
+            classification = "Moderate"
+            confidence = 80.0
+        else:
+            classification = "Easy"
+            confidence = 90.0
+
+    # --- B. SIMULATED METRICS (For Thesis Chapter 3) ---
+    # We normalize raw math into 0-1 scores for the UI progress bars
     
-    # 3. Format the result to send back to the user
+    # 1. Simulated Fixation (Vocabulary Load)
+    # Logic: More difficult words = Eyes stay fixed longer
+    fixation_index = min(features["difficult_word_ratio"] * 4, 1.0)
+    
+    # 2. Simulated Regression (Sentence Complexity)
+    # Logic: Longer sentences = Eyes look back (regress) more often
+    regression_index = min(features["avg_sentence_length"] / 35, 1.0)
+
+    # 3. Estimated Reading Time (Standard Grade 7 speed: ~150 wpm)
+    reading_time_min = round(features["total_words"] / 150, 1)
+
+    # --- C. CONSTRUCT FINAL JSON ---
     result = {
-        "classification": classification,
-        "metrics": {
-            "total_words": features["total_words"],
-            "avg_sentence_length": round(features["avg_sentence_length"], 2),
-            "difficult_word_ratio": round(features["difficult_word_ratio"], 2)
+        "classification": classification, 
+        "confidence_score": confidence,
+        "simulated_metrics": {
+            "fixation_index": round(fixation_index, 2),
+            "regression_index": round(regression_index, 2),
+            "est_reading_time_min": reading_time_min
+        },
+        "highlights": {
+            "difficult_words": list(set(diff_words)) # Unique list for Word Add-in to underline
+        },
+        "raw_stats": {
+            "word_count": features["total_words"],
+            "avg_len": round(features["avg_sentence_length"], 1),
+            "complexity_ratio": round(features["difficult_word_ratio"], 2)
         }
     }
     

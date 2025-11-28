@@ -26,12 +26,12 @@ export default function HighlightedText({ text, highlights, file }) {
   const sentences = text.match(/[^.!?]+[.!?]*\s*/g) || [text];
 
   return (
-    <div className="p-4 rounded-lg bg-white shadow-sm border mt-4">
+    <div className="p-4 rounded-lg bg-white shadow-sm border">
       <h3 className="text-sm font-medium text-slate-500 mb-3">Analysis Highlights</h3>
       <p className="text-xs text-slate-500 mb-2">
         <span className="highlight-sentence px-1 rounded">Long sentences</span> and <span className="highlight-word px-1 rounded">difficult words</span> are highlighted.
       </p>
-      <div className="prose prose-slate max-w-none p-4 border rounded-md bg-white h-72 overflow-y-auto">
+      <div className="prose prose-slate max-w-none p-4 border rounded-md bg-white h-full overflow-y-auto">
         {sentences.map((sentence, sentenceIndex) => {
           
           // Check if this sentence index is in the "long sentences" list

@@ -1,21 +1,20 @@
 @import "tailwindcss";
 
 @theme {
-  --color-teal-dark: #016B61;
-  --color-teal: #70B2B2;
-  --color-teal-light: #9ECFD4;
-  --color-bg: #E5E9C5;
+  --color-teal-dark: #016b61;
+  --color-teal: #70b2b2;
+  --color-teal-light: #9ecfd4;
+  --color-bg: #e5e9c5;
 }
-
 
 /* Custom styles for ReadTrack highlights */
 .highlight-sentence {
-  background-color: #fffde7; /* Light yellow for long sentences */
+  background-color: #fde995; /* Light yellow for long sentences */
   display: inline; /* Ensure it flows with text */
 }
 
 .highlight-word {
-  background-color: #ffebee; /* Light red/pink for difficult words */
+  background-color: #ff9fae; /* Light red/pink for difficult words */
   border-radius: 4px;
   padding: 0 2px;
   display: inline;
